@@ -30,6 +30,11 @@
       cursor: pointer;
       margin: 0 2px;
       border-radius: 5px 5px 0 0;
+      transition: background-color 0.3s;
+    }
+    
+    .team-tab:hover {
+      background-color: #444;
     }
     
     .team-tab.active {
@@ -101,7 +106,7 @@
       left: 2px;
       display: flex;
       flex-wrap: wrap;
-      width: 18px;
+      width: 24px;
     }
     
     .ball-indicator, .strike-indicator {
@@ -121,8 +126,12 @@
     }
     
     .diamond {
-      width: 20px;
-      height: 20px;
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      min-height: 40px;
+      max-width: 40px;
+      max-height: 40px;
       background-color: #333;
       border: 2px solid #666;
       transform: rotate(45deg);
@@ -130,6 +139,7 @@
       align-items: center;
       justify-content: center;
       position: relative;
+      flex-shrink: 0;
     }
     
     .diamond-content {
@@ -139,26 +149,30 @@
       color: #fff;
       text-align: center;
       line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 28px;
+      max-height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     
-    .diamond.hit {
-      background-color: #4CAF50;
-      border-color: #45a049;
+    .diamond.hit .diamond-content { 
+      color: #4CAF50; /* Green for hits */
     }
-    
-    .diamond.out {
-      background-color: #f44336;
-      border-color: #d32f2f;
+
+    .diamond.out .diamond-content { 
+      color: #f44336; /* Red for outs */
     }
-    
-    .diamond.walk {
-      background-color: #2196F3;
-      border-color: #1976D2;
+
+    .diamond.walk .diamond-content {
+      color: #2196F3; /* Blue for walks */
     }
-    
-    .diamond.error {
-      background-color: #FF9800;
-      border-color: #F57C00;
+
+    .diamond.error .diamond-content { 
+      color: #FF9800; /* Orange for errors */
     }
     
     .loading {
@@ -181,10 +195,26 @@
       background-color: #222;
       border-radius: 5px;
     }
+
+    .back-link {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 10px 20px;
+      background-color: #333;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+
+    .back-link:hover {
+      background-color: #444;
+    }
   </style>
 </head>
 <body>
   <div class="header">
+    <a href="index.html" class="back-link">← Back to Games</a>
     <h1>MLB Scorebook</h1>
     <div class="game-info" id="gameInfo">Loading game information...</div>
   </div>
@@ -202,13 +232,23 @@
     let gameData = null;
     let currentTeam = 'home';
     
-    // Sample game ID - replace with actual game ID
-    const gamePk = '663469'; // You can change this to any game ID
+    // Function to get URL parameters
+    function getUrlParameter(name) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(name);
+    }
     
-    async function fetchGameData() {
+    async function fetchGameData(gamePk) {
       try {
+        console.log('Fetching game data for:', gamePk);
         const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
         const data = await res.json();
+        console.log('Game data received:', data);
         return data;
       } catch (error) {
         console.error('Error fetching game data:', error);
@@ -217,7 +257,11 @@
     }
 
     function getAtBatPlays(plays, playerId) {
-      return plays.filter(play => play.matchup?.batter?.id === parseInt(playerId));
+      if (!plays || !playerId) return [];
+      return plays.filter(play => {
+        const batterId = play.matchup?.batter?.id;
+        return batterId === parseInt(playerId);
+      });
     }
 
     function createBallsStrikesIndicator(balls, strikes) {
@@ -238,8 +282,10 @@
     }
 
     function getDiamondClass(eventType) {
+      if (!eventType) return '';
+      
       const hitEvents = ['single', 'double', 'triple', 'home_run'];
-      const outEvents = ['strikeout', 'groundout', 'flyout', 'lineout', 'pop_out', 'force_out'];
+      const outEvents = ['strikeout', 'groundout', 'flyout', 'lineout', 'pop_out', 'force_out', 'field_out', 'fielders_choice', 'fielders_choice_out'];
       const walkEvents = ['walk', 'hit_by_pitch'];
       
       if (hitEvents.includes(eventType)) return 'hit';
@@ -249,21 +295,45 @@
     }
 
     function getDiamondSymbol(eventType) {
+      if (!eventType) return '';
+      
       const symbols = {
         'single': '1B',
         'double': '2B',
         'triple': '3B',
         'home_run': 'HR',
         'walk': 'BB',
-        'hit_by_pitch': 'HBP',
+        'hit_by_pitch': 'HP',
         'strikeout': 'K',
         'groundout': 'GO',
         'flyout': 'FO',
         'lineout': 'LO',
         'pop_out': 'PO',
-        'force_out': 'FC'
+        'force_out': 'FC',
+        'field_out': 'FO',
+        'double_play': 'DP',
+        'fielders_choice': 'FC',
+        'fielders_choice_out': 'FC',
+        'sac_fly': 'SF',
+        'sac_bunt': 'SB',
+        'balk': 'BK',
+        'wild_pitch': 'WP',
+        'passed_ball': 'PB',
+        'stolen_base': 'SB',
+        'grounded_into_double_play': 'DP',
+        'intent_walk': 'IBB',
+        'intentional_walk': 'IBB',
+        'catcher_interf': 'CI',
+        'fan_interference': 'FI'
       };
-      return symbols[eventType] || 'E';
+      
+      // Return the symbol if found, otherwise return a shortened version of the event type
+      const symbol = symbols[eventType];
+      if (symbol) return symbol;
+      
+      // Fallback: create a short abbreviation from the event type
+      if (eventType.length <= 2) return eventType.toUpperCase();
+      return eventType.substring(0, 2).toUpperCase();
     }
 
     function renderInningCells(plays, playerId, totalInnings) {
@@ -271,17 +341,17 @@
       const atBats = getAtBatPlays(plays, playerId);
       
       atBats.forEach(play => {
-        const inning = play.about.inning - 1;
-        if (inning < innings.length) {
-          const eventType = play.result.eventType;
+        const inning = play.about?.inning;
+        if (inning && inning >= 1 && inning <= innings.length) {
+          const eventType = play.result?.eventType;
           const balls = play.count?.balls || 0;
           const strikes = play.count?.strikes || 0;
           
-          innings[inning] = {
+          innings[inning - 1] = {
             eventType,
             balls,
             strikes,
-            event: play.result.event
+            event: play.result?.event
           };
         }
       });
@@ -317,26 +387,28 @@
       const atBats = getAtBatPlays(plays, playerId);
       
       atBats.forEach(play => {
-        const eventType = play.result.eventType;
+        const eventType = play.result?.eventType;
         
-        // At bat (exclude walks and HBP)
-        if (eventType !== 'walk' && eventType !== 'hit_by_pitch') {
-          stats.ab++;
-        }
-        
-        // RBI
-        if (play.result.rbi) {
-          stats.rbi += play.result.rbi;
-        }
-        
-        // Hits
-        if (['single', 'double', 'triple', 'home_run'].includes(eventType)) {
-          stats.h++;
-        }
-        
-        // Runs (this is simplified - actual runs scoring is more complex)
-        if (play.result.awayScore > 0 || play.result.homeScore > 0) {
-          stats.r++;
+        if (eventType) {
+          // At bat (exclude walks and HBP)
+          if (eventType !== 'walk' && eventType !== 'hit_by_pitch') {
+            stats.ab++;
+          }
+          
+          // RBI
+          if (play.result?.rbi) {
+            stats.rbi += play.result.rbi;
+          }
+          
+          // Hits
+          if (['single', 'double', 'triple', 'home_run'].includes(eventType)) {
+            stats.h++;
+          }
+          
+          // Runs - simplified approach
+          if (play.result?.rbi || eventType === 'home_run') {
+            stats.r++;
+          }
         }
       });
       
@@ -344,69 +416,96 @@
     }
 
     function buildScorebookTable(gameData, teamType) {
-      const allPlays = gameData.liveData.plays.allPlays;
-      const team = gameData.liveData.boxscore.teams[teamType];
-      const totalInnings = gameData.liveData.linescore.innings?.length || 9;
-      
-      // Get batting order or lineup
-      let players = [];
-      if (team.battingOrder) {
-        players = team.battingOrder.map(id => team.players[`ID${id}`]).filter(Boolean);
-      } else {
-        // Fallback to all players if batting order not available
-        players = Object.values(team.players).filter(p => p.stats.batting);
-      }
-      
-      // Ensure we have exactly 9 rows
-      while (players.length < 9) {
-        players.push({
-          person: { fullName: '', id: null },
-          jerseyNumber: '',
-          position: { abbreviation: '' }
-        });
-      }
-      players = players.slice(0, 9);
-
-      let html = '<table><thead><tr><th class="player-info">#</th><th class="player-info">Name</th><th class="player-info">Pos</th>';
-      
-      // Inning headers
-      for (let i = 1; i <= Math.max(9, totalInnings); i++) {
-        html += `<th class="inning-cell">${i}</th>`;
-      }
-      
-      html += '<th class="stat-cell">AB</th><th class="stat-cell">R</th><th class="stat-cell">H</th><th class="stat-cell">RBI</th></tr></thead><tbody>';
-
-      for (const player of players) {
-        const stats = player.person.id ? getPlayerStats(allPlays, player.person.id) : { ab: 0, r: 0, h: 0, rbi: 0 };
+      try {
+        const allPlays = gameData.liveData?.plays?.allPlays || [];
+        const team = gameData.liveData?.boxscore?.teams?.[teamType];
+        const totalInnings = gameData.liveData?.linescore?.innings?.length || 9;
         
-        html += `<tr>
-          <td class="player-info">${player.jerseyNumber || ''}</td>
-          <td class="player-info">${player.person.fullName || ''}</td>
-          <td class="player-info">${player.position?.abbreviation || ''}</td>
-          ${player.person.id ? renderInningCells(allPlays, player.person.id, totalInnings) : Array(Math.max(9, totalInnings)).fill('<td class="inning-cell"><div class="at-bat-box">' + createBallsStrikesIndicator(0, 0) + '<div class="diamond"><div class="diamond-content"></div></div></div></td>').join('')}
-          <td class="stat-cell">${stats.ab}</td>
-          <td class="stat-cell">${stats.r}</td>
-          <td class="stat-cell">${stats.h}</td>
-          <td class="stat-cell">${stats.rbi}</td>
-        </tr>`;
-      }
+        if (!team) {
+          return '<div class="error">Team data not available</div>';
+        }
+        
+        // Get lineup - try multiple approaches
+        let players = [];
+        
+        // Method 1: Try batting order
+        if (team.battingOrder && team.battingOrder.length > 0) {
+          players = team.battingOrder.map(id => team.players?.[`ID${id}`]).filter(Boolean);
+        }
+        
+        // Method 2: Try players with batting stats
+        if (players.length === 0 && team.players) {
+          players = Object.values(team.players).filter(p => p.stats?.batting).slice(0, 9);
+        }
+        
+        // Method 3: Use any available players
+        if (players.length === 0 && team.players) {
+          players = Object.values(team.players).slice(0, 9);
+        }
+        
+        // Ensure we have exactly 9 rows
+        while (players.length < 9) {
+          players.push({
+            person: { fullName: '', id: null },
+            jerseyNumber: '',
+            position: { abbreviation: '' }
+          });
+        }
+        players = players.slice(0, 9);
 
-      html += '</tbody></table>';
-      return html;
+        let html = '<table><thead><tr><th class="player-info">#</th><th class="player-info">Name</th><th class="player-info">Pos</th>';
+        
+        // Inning headers
+        for (let i = 1; i <= Math.max(9, totalInnings); i++) {
+          html += `<th class="inning-cell">${i}</th>`;
+        }
+        
+        html += '<th class="stat-cell">AB</th><th class="stat-cell">R</th><th class="stat-cell">H</th><th class="stat-cell">RBI</th></tr></thead><tbody>';
+
+        for (const player of players) {
+          const stats = player.person?.id ? getPlayerStats(allPlays, player.person.id) : { ab: 0, r: 0, h: 0, rbi: 0 };
+          
+          html += `<tr>
+            <td class="player-info">${player.jerseyNumber || ''}</td>
+            <td class="player-info">${player.person?.fullName || ''}</td>
+            <td class="player-info">${player.position?.abbreviation || ''}</td>
+            ${player.person?.id ? renderInningCells(allPlays, player.person.id, totalInnings) : Array(Math.max(9, totalInnings)).fill('<td class="inning-cell"><div class="at-bat-box">' + createBallsStrikesIndicator(0, 0) + '<div class="diamond"><div class="diamond-content"></div></div></div></td>').join('')}
+            <td class="stat-cell">${stats.ab}</td>
+            <td class="stat-cell">${stats.r}</td>
+            <td class="stat-cell">${stats.h}</td>
+            <td class="stat-cell">${stats.rbi}</td>
+          </tr>`;
+        }
+
+        html += '</tbody></table>';
+        return html;
+      } catch (error) {
+        console.error('Error building scorebook table:', error);
+        return '<div class="error">Error building scorebook table</div>';
+      }
     }
 
     function updateGameInfo(gameData) {
-      const gameInfo = gameData.gameData;
-      const teams = gameData.liveData.boxscore.teams;
-      const status = gameData.gameData.status.detailedState;
-      
-      document.getElementById('gameInfo').innerHTML = `
-        <strong>${teams.away.team.name} @ ${teams.home.team.name}</strong> - ${status}
-      `;
-      
-      // Update team tab labels
-      document.getElementById('homeTab').textContent = teams.home.team.name;
-      document.getElementById('awayTab').textContent = teams.away.team.name;
+      try {
+        const gameInfo = gameData.gameData;
+        const teams = gameData.liveData?.boxscore?.teams;
+        const status = gameData.gameData?.status?.detailedState || 'Unknown';
+        
+        if (teams) {
+          document.getElementById('gameInfo').innerHTML = `
+            <strong>${teams.away?.team?.name || 'Away Team'} @ ${teams.home?.team?.name || 'Home Team'}</strong> - ${status}
+          `;
+          
+          // Update team tab labels
+          document.getElementById('homeTab').textContent = teams.home?.team?.name || 'Home Team';
+          document.getElementById('awayTab').textContent = teams.away?.team?.name || 'Away Team';
+        } else {
+          document.getElementById('gameInfo').innerHTML = `Game Status: ${status}`;
+        }
+      } catch (error) {
+        console.error('Error updating game info:', error);
+        document.getElementById('gameInfo').innerHTML = 'Error loading game information';
+      }
     }
 
     function switchTeam(teamType) {
@@ -422,15 +521,31 @@
       }
     }
 
-    // Initialize the scorebook
-    fetchGameData().then(data => {
-      gameData = data;
-      updateGameInfo(data);
-      document.getElementById('scorebook').innerHTML = buildScorebookTable(data, currentTeam);
-    }).catch(err => {
-      document.getElementById('scorebook').innerHTML = '<div class="error">Error loading game data. Please check the game ID and try again.</div>';
-      console.error('Error loading game data:', err);
-    });
+    function loadGame() {
+      // Get game ID from URL parameter
+      const gameId = getUrlParameter('gamePk');
+      
+      if (!gameId) {
+        document.getElementById('scorebook').innerHTML = '<div class="error">No game ID provided. Please select a game from the main page.</div>';
+        document.getElementById('gameInfo').innerHTML = 'No game selected';
+        return;
+      }
+      
+      document.getElementById('scorebook').innerHTML = '<div class="loading">Loading scorebook...</div>';
+      document.getElementById('gameInfo').innerHTML = 'Loading game information...';
+      
+      fetchGameData(gameId).then(data => {
+        gameData = data;
+        updateGameInfo(data);
+        document.getElementById('scorebook').innerHTML = buildScorebookTable(data, currentTeam);
+      }).catch(err => {
+        document.getElementById('scorebook').innerHTML = `<div class="error">Error loading game data: ${err.message}<br>Please check the game ID and try again.</div>`;
+        console.error('Error loading game data:', err);
+      });
+    }
+
+    // Initialize the scorebook when page loads
+    document.addEventListener('DOMContentLoaded', loadGame);
   </script>
 </body>
 </html>
