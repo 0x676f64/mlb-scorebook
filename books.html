@@ -1,11 +1,436 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8" />
+  <title>MLB Scorebook</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      padding: 20px;
+      margin: 0;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .team-tabs {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    
+    .team-tab {
+      padding: 10px 20px;
+      background-color: #333;
+      border: 1px solid #555;
+      cursor: pointer;
+      margin: 0 2px;
+      border-radius: 5px 5px 0 0;
+    }
+    
+    .team-tab.active {
+      background-color: #555;
+      border-bottom: 1px solid #555;
+    }
+    
+    .scorebook-container {
+      overflow-x: auto;
+      border: 2px solid #555;
+      border-radius: 8px;
+      background-color: #111;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+    }
+    
+    th, td {
+      border: 1px solid #333;
+      padding: 4px;
+      text-align: center;
+      font-size: 11px;
+      position: relative;
+      height: 60px;
+      vertical-align: middle;
+    }
+    
+    th {
+      background-color: #222;
+      height: 40px;
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    .player-info {
+      background-color: #1a1a1a;
+      font-weight: bold;
+      width: 80px;
+    }
+    
+    .inning-cell {
+      width: 70px;
+      background-color: #0a0a0a;
+      position: relative;
+      padding: 2px;
+    }
+    
+    .stat-cell {
+      background-color: #1a1a1a;
+      font-weight: bold;
+      width: 40px;
+    }
+    
+    .at-bat-box {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .balls-strikes {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      display: flex;
+      flex-wrap: wrap;
+      width: 18px;
+    }
+    
+    .ball-indicator, .strike-indicator {
+      width: 4px;
+      height: 4px;
+      border: 1px solid #666;
+      margin: 1px;
+      border-radius: 50%;
+    }
+    
+    .ball-indicator.filled {
+      background-color: #4CAF50;
+    }
+    
+    .strike-indicator.filled {
+      background-color: #f44336;
+    }
+    
+    .diamond {
+      width: 20px;
+      height: 20px;
+      background-color: #333;
+      border: 2px solid #666;
+      transform: rotate(45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    
+    .diamond-content {
+      transform: rotate(-45deg);
+      font-size: 8px;
+      font-weight: bold;
+      color: #fff;
+      text-align: center;
+      line-height: 1;
+    }
+    
+    .diamond.hit {
+      background-color: #4CAF50;
+      border-color: #45a049;
+    }
+    
+    .diamond.out {
+      background-color: #f44336;
+      border-color: #d32f2f;
+    }
+    
+    .diamond.walk {
+      background-color: #2196F3;
+      border-color: #1976D2;
+    }
+    
+    .diamond.error {
+      background-color: #FF9800;
+      border-color: #F57C00;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 50px;
+      font-size: 18px;
+    }
+    
+    .error {
+      text-align: center;
+      padding: 50px;
+      color: #f44336;
+      font-size: 18px;
+    }
+    
+    .game-info {
+      text-align: center;
+      margin-bottom: 20px;
+      padding: 10px;
+      background-color: #222;
+      border-radius: 5px;
+    }
+  </style>
 </head>
 <body>
-    <p>This is a book</p>
+  <div class="header">
+    <h1>MLB Scorebook</h1>
+    <div class="game-info" id="gameInfo">Loading game information...</div>
+  </div>
+  
+  <div class="team-tabs">
+    <div class="team-tab active" id="homeTab" onclick="switchTeam('home')">Home Team</div>
+    <div class="team-tab" id="awayTab" onclick="switchTeam('away')">Away Team</div>
+  </div>
+  
+  <div class="scorebook-container">
+    <div id="scorebook" class="loading">Loading scorebook...</div>
+  </div>
+
+  <script>
+    let gameData = null;
+    let currentTeam = 'home';
+    
+    // Sample game ID - replace with actual game ID
+    const gamePk = '663469'; // You can change this to any game ID
+    
+    async function fetchGameData() {
+      try {
+        const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+        const data = await res.json();
+        return data;
+      } catch (error) {
+        console.error('Error fetching game data:', error);
+        throw error;
+      }
+    }
+
+    function getAtBatPlays(plays, playerId) {
+      return plays.filter(play => play.matchup?.batter?.id === parseInt(playerId));
+    }
+
+    function createBallsStrikesIndicator(balls, strikes) {
+      let html = '<div class="balls-strikes">';
+      
+      // First row: 3 balls
+      for (let i = 0; i < 3; i++) {
+        html += `<div class="ball-indicator ${i < balls ? 'filled' : ''}"></div>`;
+      }
+      
+      // Second row: 2 strikes
+      for (let i = 0; i < 2; i++) {
+        html += `<div class="strike-indicator ${i < strikes ? 'filled' : ''}"></div>`;
+      }
+      
+      html += '</div>';
+      return html;
+    }
+
+    function getDiamondClass(eventType) {
+      const hitEvents = ['single', 'double', 'triple', 'home_run'];
+      const outEvents = ['strikeout', 'groundout', 'flyout', 'lineout', 'pop_out', 'force_out'];
+      const walkEvents = ['walk', 'hit_by_pitch'];
+      
+      if (hitEvents.includes(eventType)) return 'hit';
+      if (outEvents.includes(eventType)) return 'out';
+      if (walkEvents.includes(eventType)) return 'walk';
+      return 'error';
+    }
+
+    function getDiamondSymbol(eventType) {
+      const symbols = {
+        'single': '1B',
+        'double': '2B',
+        'triple': '3B',
+        'home_run': 'HR',
+        'walk': 'BB',
+        'hit_by_pitch': 'HBP',
+        'strikeout': 'K',
+        'groundout': 'GO',
+        'flyout': 'FO',
+        'lineout': 'LO',
+        'pop_out': 'PO',
+        'force_out': 'FC'
+      };
+      return symbols[eventType] || 'E';
+    }
+
+    function renderInningCells(plays, playerId, totalInnings) {
+      const innings = Array(Math.max(9, totalInnings)).fill(null);
+      const atBats = getAtBatPlays(plays, playerId);
+      
+      atBats.forEach(play => {
+        const inning = play.about.inning - 1;
+        if (inning < innings.length) {
+          const eventType = play.result.eventType;
+          const balls = play.count?.balls || 0;
+          const strikes = play.count?.strikes || 0;
+          
+          innings[inning] = {
+            eventType,
+            balls,
+            strikes,
+            event: play.result.event
+          };
+        }
+      });
+      
+      return innings.map(atBat => {
+        if (!atBat) {
+          return `<td class="inning-cell">
+            <div class="at-bat-box">
+              ${createBallsStrikesIndicator(0, 0)}
+              <div class="diamond">
+                <div class="diamond-content"></div>
+              </div>
+            </div>
+          </td>`;
+        }
+        
+        const diamondClass = getDiamondClass(atBat.eventType);
+        const diamondSymbol = getDiamondSymbol(atBat.eventType);
+        
+        return `<td class="inning-cell">
+          <div class="at-bat-box">
+            ${createBallsStrikesIndicator(atBat.balls, atBat.strikes)}
+            <div class="diamond ${diamondClass}">
+              <div class="diamond-content">${diamondSymbol}</div>
+            </div>
+          </div>
+        </td>`;
+      }).join('');
+    }
+
+    function getPlayerStats(plays, playerId) {
+      const stats = { ab: 0, r: 0, h: 0, rbi: 0 };
+      const atBats = getAtBatPlays(plays, playerId);
+      
+      atBats.forEach(play => {
+        const eventType = play.result.eventType;
+        
+        // At bat (exclude walks and HBP)
+        if (eventType !== 'walk' && eventType !== 'hit_by_pitch') {
+          stats.ab++;
+        }
+        
+        // RBI
+        if (play.result.rbi) {
+          stats.rbi += play.result.rbi;
+        }
+        
+        // Hits
+        if (['single', 'double', 'triple', 'home_run'].includes(eventType)) {
+          stats.h++;
+        }
+        
+        // Runs (this is simplified - actual runs scoring is more complex)
+        if (play.result.awayScore > 0 || play.result.homeScore > 0) {
+          stats.r++;
+        }
+      });
+      
+      return stats;
+    }
+
+    function buildScorebookTable(gameData, teamType) {
+      const allPlays = gameData.liveData.plays.allPlays;
+      const team = gameData.liveData.boxscore.teams[teamType];
+      const totalInnings = gameData.liveData.linescore.innings?.length || 9;
+      
+      // Get batting order or lineup
+      let players = [];
+      if (team.battingOrder) {
+        players = team.battingOrder.map(id => team.players[`ID${id}`]).filter(Boolean);
+      } else {
+        // Fallback to all players if batting order not available
+        players = Object.values(team.players).filter(p => p.stats.batting);
+      }
+      
+      // Ensure we have exactly 9 rows
+      while (players.length < 9) {
+        players.push({
+          person: { fullName: '', id: null },
+          jerseyNumber: '',
+          position: { abbreviation: '' }
+        });
+      }
+      players = players.slice(0, 9);
+
+      let html = '<table><thead><tr><th class="player-info">#</th><th class="player-info">Name</th><th class="player-info">Pos</th>';
+      
+      // Inning headers
+      for (let i = 1; i <= Math.max(9, totalInnings); i++) {
+        html += `<th class="inning-cell">${i}</th>`;
+      }
+      
+      html += '<th class="stat-cell">AB</th><th class="stat-cell">R</th><th class="stat-cell">H</th><th class="stat-cell">RBI</th></tr></thead><tbody>';
+
+      for (const player of players) {
+        const stats = player.person.id ? getPlayerStats(allPlays, player.person.id) : { ab: 0, r: 0, h: 0, rbi: 0 };
+        
+        html += `<tr>
+          <td class="player-info">${player.jerseyNumber || ''}</td>
+          <td class="player-info">${player.person.fullName || ''}</td>
+          <td class="player-info">${player.position?.abbreviation || ''}</td>
+          ${player.person.id ? renderInningCells(allPlays, player.person.id, totalInnings) : Array(Math.max(9, totalInnings)).fill('<td class="inning-cell"><div class="at-bat-box">' + createBallsStrikesIndicator(0, 0) + '<div class="diamond"><div class="diamond-content"></div></div></div></td>').join('')}
+          <td class="stat-cell">${stats.ab}</td>
+          <td class="stat-cell">${stats.r}</td>
+          <td class="stat-cell">${stats.h}</td>
+          <td class="stat-cell">${stats.rbi}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table>';
+      return html;
+    }
+
+    function updateGameInfo(gameData) {
+      const gameInfo = gameData.gameData;
+      const teams = gameData.liveData.boxscore.teams;
+      const status = gameData.gameData.status.detailedState;
+      
+      document.getElementById('gameInfo').innerHTML = `
+        <strong>${teams.away.team.name} @ ${teams.home.team.name}</strong> - ${status}
+      `;
+      
+      // Update team tab labels
+      document.getElementById('homeTab').textContent = teams.home.team.name;
+      document.getElementById('awayTab').textContent = teams.away.team.name;
+    }
+
+    function switchTeam(teamType) {
+      currentTeam = teamType;
+      
+      // Update tab appearance
+      document.getElementById('homeTab').classList.toggle('active', teamType === 'home');
+      document.getElementById('awayTab').classList.toggle('active', teamType === 'away');
+      
+      // Rebuild scorebook for selected team
+      if (gameData) {
+        document.getElementById('scorebook').innerHTML = buildScorebookTable(gameData, teamType);
+      }
+    }
+
+    // Initialize the scorebook
+    fetchGameData().then(data => {
+      gameData = data;
+      updateGameInfo(data);
+      document.getElementById('scorebook').innerHTML = buildScorebookTable(data, currentTeam);
+    }).catch(err => {
+      document.getElementById('scorebook').innerHTML = '<div class="error">Error loading game data. Please check the game ID and try again.</div>';
+      console.error('Error loading game data:', err);
+    });
+  </script>
 </body>
 </html>
