@@ -281,60 +281,198 @@
       return html;
     }
 
-    function getDiamondClass(eventType) {
-      if (!eventType) return '';
-      
-      const hitEvents = ['single', 'double', 'triple', 'home_run'];
-      const outEvents = ['strikeout', 'groundout', 'flyout', 'lineout', 'pop_out', 'force_out', 'field_out', 'fielders_choice', 'fielders_choice_out'];
-      const walkEvents = ['walk', 'hit_by_pitch'];
-      
-      if (hitEvents.includes(eventType)) return 'hit';
-      if (outEvents.includes(eventType)) return 'out';
-      if (walkEvents.includes(eventType)) return 'walk';
-      return 'error';
-    }
+  // Position mapping for MLB scorebook
+const POSITION_NUMBERS = {
+  'Pitcher': 1,
+  'Catcher': 2,
+  'First Baseman': 3,
+  'Second Baseman': 4,
+  'Third Baseman': 5,
+  'Shortstop': 6,
+  'Left Fielder': 7,
+  'Center Fielder': 8,
+  'Right Fielder': 9
+};
 
-    function getDiamondSymbol(eventType) {
-      if (!eventType) return '';
-      
-      const symbols = {
-        'single': '1B',
-        'double': '2B',
-        'triple': '3B',
-        'home_run': 'HR',
-        'walk': 'BB',
-        'hit_by_pitch': 'HP',
-        'strikeout': 'K',
-        'groundout': 'GO',
-        'flyout': 'FO',
-        'lineout': 'LO',
-        'pop_out': 'PO',
-        'force_out': 'FC',
-        'field_out': 'FO',
-        'double_play': 'DP',
-        'fielders_choice': 'FC',
-        'fielders_choice_out': 'FC',
-        'sac_fly': 'SF',
-        'sac_bunt': 'SB',
-        'balk': 'BK',
-        'wild_pitch': 'WP',
-        'passed_ball': 'PB',
-        'stolen_base': 'SB',
-        'grounded_into_double_play': 'DP',
-        'intent_walk': 'IBB',
-        'intentional_walk': 'IBB',
-        'catcher_interf': 'CI',
-        'fan_interference': 'FI'
-      };
-      
-      // Return the symbol if found, otherwise return a shortened version of the event type
-      const symbol = symbols[eventType];
-      if (symbol) return symbol;
-      
-      // Fallback: create a short abbreviation from the event type
-      if (eventType.length <= 2) return eventType.toUpperCase();
-      return eventType.substring(0, 2).toUpperCase();
+// Helper function to get position number from player name using defense lineup
+function getPositionNumber(playerName, defenseLineup) {
+  if (!defenseLineup || !playerName) return null;
+  
+  // Search through all positions in the defense lineup
+  for (const [position, playerInfo] of Object.entries(defenseLineup)) {
+    if (playerInfo.fullName === playerName) {
+      return POSITION_NUMBERS[position] || null;
     }
+  }
+  return null;
+}
+
+// Helper function to extract fielding positions from play description
+function parseFieldingPlay(description, defenseLineup) {
+  if (!description || !defenseLineup) return null;
+  
+  // Common patterns for fielding plays
+  const patterns = [
+    // "grounds out to shortstop" or "grounds out, shortstop to first baseman"
+    /grounds out(?:,)?\s+(?:to\s+)?([^,]+?)(?:\s+to\s+([^,\.]+))?/i,
+    // "flies out to center fielder"
+    /flies out\s+to\s+([^,\.]+)/i,
+    // "lines out to third baseman"
+    /lines out\s+to\s+([^,\.]+)/i,
+    // "pops out to catcher"
+    /pops out\s+to\s+([^,\.]+)/i,
+    // "force out at second, shortstop to second baseman"
+    /force out.*?([^,]+?)\s+to\s+([^,\.]+)/i,
+    // Look for player names in the description
+    /([A-Z][a-z]+\s+[A-Z][a-z]+)/g
+  ];
+  
+  const positions = [];
+  
+  // Try position-based patterns first
+  for (const pattern of patterns.slice(0, -1)) {
+    const match = description.match(pattern);
+    if (match) {
+      // Extract position names and convert to numbers
+      for (let i = 1; i < match.length; i++) {
+        if (match[i]) {
+          const positionName = match[i].trim();
+          const positionNumber = POSITION_NUMBERS[positionName];
+          if (positionNumber) {
+            positions.push(positionNumber);
+          }
+        }
+      }
+      if (positions.length > 0) break;
+    }
+  }
+  
+  // If no position-based match, try to find player names
+  if (positions.length === 0) {
+    const playerMatches = description.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/g);
+    if (playerMatches) {
+      for (const playerName of playerMatches) {
+        const positionNumber = getPositionNumber(playerName, defenseLineup);
+        if (positionNumber) {
+          positions.push(positionNumber);
+        }
+      }
+    }
+  }
+  
+  return positions.length > 0 ? positions : null;
+}
+
+// Helper function to format positional notation
+function formatPositionalNotation(positions) {
+  if (!positions || positions.length === 0) return null;
+  
+  // Remove duplicates and sort
+  const uniquePositions = [...new Set(positions)];
+  
+  if (uniquePositions.length === 1) {
+    return uniquePositions[0].toString();
+  } else {
+    return uniquePositions.join('-');
+  }
+}
+
+function getDiamondClass(eventType) {
+  if (!eventType) return '';
+  
+  const hitEvents = ['single', 'double', 'triple', 'home_run'];
+  const outEvents = ['strikeout', 'groundout', 'flyout', 'lineout', 'pop_out', 'force_out', 'field_out', 'fielders_choice', 'fielders_choice_out'];
+  const walkEvents = ['walk', 'hit_by_pitch'];
+  
+  if (hitEvents.includes(eventType)) return 'hit';
+  if (outEvents.includes(eventType)) return 'out';
+  if (walkEvents.includes(eventType)) return 'walk';
+  return 'error';
+}
+
+function getDiamondSymbol(eventType, playDescription, defenseLineup) {
+  if (!eventType) return '';
+  
+  // Handle hits and walks with traditional symbols
+  const basicSymbols = {
+    'single': '1B',
+    'double': '2B',
+    'triple': '3B',
+    'home_run': 'HR',
+    'walk': 'BB',
+    'hit_by_pitch': 'HP',
+    'strikeout': 'K',
+    'sac_fly': 'SF',
+    'sac_bunt': 'SB',
+    'balk': 'BK',
+    'wild_pitch': 'WP',
+    'passed_ball': 'PB',
+    'stolen_base': 'SB',
+    'intent_walk': 'IBB',
+    'intentional_walk': 'IBB',
+    'catcher_interf': 'CI',
+    'fan_interference': 'FI'
+  };
+  
+  // Return basic symbol if it exists (non-fielding plays)
+  if (basicSymbols[eventType]) {
+    return basicSymbols[eventType];
+  }
+  
+  // Handle fielding plays with positional numbers
+  const fieldingEvents = ['groundout', 'flyout', 'lineout', 'pop_out', 'force_out', 'field_out', 'fielders_choice', 'fielders_choice_out'];
+  
+  if (fieldingEvents.includes(eventType)) {
+    const positions = parseFieldingPlay(playDescription, defenseLineup);
+    const positionalNotation = formatPositionalNotation(positions);
+    
+    if (positionalNotation) {
+      return positionalNotation;
+    }
+  }
+  
+  // Handle double plays
+  if (eventType === 'double_play' || eventType === 'grounded_into_double_play') {
+    const positions = parseFieldingPlay(playDescription, defenseLineup);
+    const positionalNotation = formatPositionalNotation(positions);
+    
+    if (positionalNotation) {
+      return positionalNotation + ' DP';
+    }
+    return 'DP';
+  }
+  
+  // Fallback for unknown events
+  if (eventType.length <= 2) return eventType.toUpperCase();
+  return eventType.substring(0, 2).toUpperCase();
+}
+
+// Example usage function
+function processPlayEvent(playEvent, defenseLineup) {
+  const eventType = playEvent.details?.eventType;
+  const description = playEvent.details?.description;
+  
+  return {
+    eventType: eventType,
+    symbol: getDiamondSymbol(eventType, description, defenseLineup),
+    diamondClass: getDiamondClass(eventType),
+    description: description
+  };
+}
+
+// Helper function to extract defense lineup from MLB API data
+function extractDefenseLineup(gameData) {
+  // This would extract from data.liveData.linescore.defense
+  // The structure would be something like:
+  // {
+  //   "Pitcher": { "fullName": "John Doe", "id": 123 },
+  //   "Catcher": { "fullName": "Jane Smith", "id": 456 },
+  //   // ... etc
+  // }
+  
+  if (!gameData?.liveData?.linescore?.defense) return null;
+  return gameData.liveData.linescore.defense;
+}
 
     function renderInningCells(plays, playerId, totalInnings) {
       const innings = Array(Math.max(9, totalInnings)).fill(null);
